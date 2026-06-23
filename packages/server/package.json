@@ -8,7 +8,8 @@
     "moos-ivp-language-server": "src/server.js"
   },
   "scripts": {
-    "check": "node src/server.js --version && node src/server.js --check ../../examples/all_apps.moos ../../examples/all_behaviors.bhv"
+    "check": "node src/server.js --version && node src/server.js --check ../../examples/all_apps.moos ../../examples/all_behaviors.bhv",
+    "start": "node src/server.js"
   },
   "dependencies": {
     "@moos-ivp/language-core": "0.1.0",

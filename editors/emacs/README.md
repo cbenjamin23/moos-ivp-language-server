@@ -21,7 +21,7 @@ Then add this folder to your Emacs load path:
 Open a `.moos`, `.xmoos`, `.bhv`, or `.xbhv` file and run:
 
 ```elisp
-M-x eglot
+M-x moos-ivp-eglot-ensure
 ```
 
 ## Current Features
@@ -31,5 +31,4 @@ M-x eglot
 - `eglot` registration for `moos-ivp-language-server`.
 - LSP-backed diagnostics, hover, and formatting hooks.
 
-The current language behavior is intentionally minimal. The next milestone is porting the validated VS Code 1.0.0 language behavior into the shared core.
-
+The shared core now contains the validated VS Code 1.0.0 language modules and metadata. The next milestone is interactive Emacs testing and packaging polish.

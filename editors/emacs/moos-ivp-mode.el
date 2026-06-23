@@ -37,6 +37,14 @@
     (user-error "eglot is not available")))
 
 ;;;###autoload
+(defun moos-ivp-eglot-ensure ()
+  "Start or reuse the MOOS-IvP language server for the current buffer."
+  (interactive)
+  (if (fboundp 'eglot-ensure)
+      (eglot-ensure)
+    (user-error "eglot is not available")))
+
+;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.x?moos\\'" . moos-ivp-mode))
 
 ;;;###autoload
@@ -49,4 +57,3 @@
 (provide 'moos-ivp-mode)
 
 ;;; moos-ivp-mode.el ends here
-
