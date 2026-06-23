@@ -1,0 +1,22 @@
+{
+  "name": "@moos-ivp/language-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Language Server Protocol server for MOOS-IvP files.",
+  "main": "src/server.js",
+  "bin": {
+    "moos-ivp-language-server": "src/server.js"
+  },
+  "scripts": {
+    "check": "node src/server.js --version"
+  },
+  "dependencies": {
+    "@moos-ivp/language-core": "0.1.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

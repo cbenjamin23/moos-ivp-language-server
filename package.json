@@ -1,0 +1,18 @@
+{
+  "name": "moos-ivp-language-server-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Editor-neutral MOOS-IvP language tools and LSP server.",
+  "workspaces": [
+    "packages/core",
+    "packages/server"
+  ],
+  "scripts": {
+    "check": "npm run check --workspaces",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

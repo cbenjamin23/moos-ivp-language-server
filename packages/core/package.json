@@ -1,0 +1,15 @@
+{
+  "name": "@moos-ivp/language-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Editor-neutral MOOS-IvP language core.",
+  "main": "src/index.js",
+  "scripts": {
+    "check": "npm test",
+    "test": "node test/core.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+
