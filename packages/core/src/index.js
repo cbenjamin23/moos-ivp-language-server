@@ -7,6 +7,7 @@ const { formatMoosIvpText, formatDocument, defaultFormattingOptions } = require(
 const { validateGeometryValue } = require("./geometry");
 const { createHoverProvider } = require("./hover");
 const { loadLanguageRegistry } = require("./registry");
+const { findCurrentOwner, parameterLookupName } = require("./scanner");
 
 const MOOS_EXTENSIONS = new Set([".moos", ".xmoos"]);
 const BEHAVIOR_EXTENSIONS = new Set([".bhv", ".xbhv"]);
@@ -197,8 +198,114 @@ function formatTextWithIssues(text, language, options = {}) {
   return formatMoosIvpText(text, language, options);
 }
 
+function ownerVariants(owner, language) {
+  if (!owner || language !== "ivp-behavior") {
+    return [owner];
+  }
+
+  const variants = [owner];
+  if (owner.startsWith("BHV_")) {
+    variants.push(owner.slice(4));
+  } else {
+    variants.push(`BHV_${owner}`);
+  }
+  return [...new Set(variants)];
+}
+
+function completionFromItem(item) {
+  return {
+    label: item.name,
+    detail: item.kind,
+    documentation: item.description
+  };
+}
+
+function ownerCompletionItems(language) {
+  const loaded = languageRegistry();
+  const lookup = language === "ivp-behavior" ? loaded.bhvLookup : loaded.moosLookup;
+  const docLookup = language === "ivp-behavior" ? loaded.bhvDocLookup : loaded.moosDocLookup;
+  const sourceLookup = language === "ivp-behavior" ? loaded.bhvSourceLookup : loaded.moosSourceLookup;
+  const ownerKind = language === "ivp-behavior" ? "IvP behavior" : "MOOS app";
+  const items = new Map();
+
+  [lookup, docLookup.ownerLookup, sourceLookup.ownerLookup].forEach((source) => {
+    source.forEach((item) => {
+      if (!item.owner && item.kind === ownerKind) {
+        items.set(item.name.toLowerCase(), completionFromItem(item));
+      }
+    });
+  });
+
+  return [...items.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function schemaParametersForOwner(schema, language, owner) {
+  const parameters = new Map();
+
+  function addParameters(container, detail) {
+    Object.keys((container && container.parameters) || {}).forEach((name) => {
+      const entry = container.parameters[name];
+      parameters.set(parameterLookupName(name).toLowerCase(), {
+        label: name,
+        detail,
+        documentation: entry.notes || entry.valueType || ""
+      });
+    });
+  }
+
+  if (language === "moos") {
+    ownerVariants(owner, language).forEach((variant) => {
+      addParameters(schema.apps && schema.apps[variant], `${variant} parameter`);
+    });
+    return parameters;
+  }
+
+  let ownerItem;
+  ownerVariants(owner, language).forEach((variant) => {
+    const item = schema.behaviors && schema.behaviors[variant];
+    if (item && !ownerItem) {
+      ownerItem = item;
+    }
+    addParameters(item, `${variant} parameter`);
+  });
+
+  addParameters(schema.shared && schema.shared.ivpBehavior, "inherited behavior parameter");
+  if ((ownerItem && ownerItem.inherits || []).includes("ivpContactBehavior")) {
+    addParameters(schema.shared && schema.shared.ivpContactBehavior, "inherited contact behavior parameter");
+  }
+
+  return parameters;
+}
+
+function completionItemsAtPosition(text, language, position) {
+  const document = createTextDocument(text, language);
+  const line = document.lineAt(position.line).text;
+  const prefix = line.slice(0, position.character);
+
+  if (language === "moos" && /^\s*ProcessConfig\s*=\s*[A-Za-z0-9_]*$/i.test(prefix)) {
+    return ownerCompletionItems(language);
+  }
+
+  if (language === "ivp-behavior" && /^\s*Behavior\s*=\s*[A-Za-z0-9_]*$/.test(prefix)) {
+    return ownerCompletionItems(language);
+  }
+
+  if (!/^\s*[A-Za-z_][A-Za-z0-9_+:-]*$/.test(prefix)) {
+    return [];
+  }
+
+  const owner = findCurrentOwner(document, position, language);
+  if (!owner) {
+    return [];
+  }
+
+  return [...schemaParametersForOwner(languageRegistry().diagnosticSchema, language, owner).values()]
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
 module.exports = {
   collectDiagnostics,
+  completionItemsAtPosition,
   createTextDocument,
   formatText,
   formatTextWithIssues,

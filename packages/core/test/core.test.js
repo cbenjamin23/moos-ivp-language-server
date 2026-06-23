@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const {
+  completionItemsAtPosition,
   collectDiagnostics,
   formatText,
   hoverAtPosition,
@@ -29,5 +30,13 @@ const hover = hoverAtPosition(
 assert.match(hover.contents, /AppTick/);
 
 assert.equal(formatText("AppTick=4   \nCommsTick = 4", "moos"), "AppTick = 4\nCommsTick = 4");
+assert.equal(
+  completionItemsAtPosition(
+    "Behavior = BHV_AbortToPoint\n{\n  sp\n}\n",
+    "ivp-behavior",
+    { line: 2, character: 4 }
+  ).some((item) => item.label === "speed"),
+  true
+);
 
 console.log("core tests passed");

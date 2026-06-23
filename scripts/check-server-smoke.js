@@ -102,6 +102,7 @@ async function main() {
 
   const initialize = await waitFor(messages, (message) => message.id === 1, "initialize response");
   assert.equal(initialize.result.capabilities.hoverProvider, true);
+  assert.equal(initialize.result.capabilities.completionProvider.triggerCharacters.includes("="), true);
   assert.equal(initialize.result.capabilities.documentFormattingProvider, true);
 
   send({ jsonrpc: "2.0", method: "initialized", params: {} });
@@ -149,6 +150,19 @@ async function main() {
 
   send({
     jsonrpc: "2.0",
+    id: 5,
+    method: "textDocument/completion",
+    params: {
+      textDocument: { uri },
+      position: { line: 2, character: 4 }
+    }
+  });
+
+  const completion = await waitFor(messages, (message) => message.id === 5, "completion response");
+  assert.equal(completion.result.some((item) => item.label === "speed"), true);
+
+  send({
+    jsonrpc: "2.0",
     id: 3,
     method: "textDocument/formatting",
     params: {
@@ -180,4 +194,3 @@ main().catch((error) => {
   console.error(error.stack || error.message);
   process.exit(1);
 });
-

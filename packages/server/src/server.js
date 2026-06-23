@@ -12,6 +12,7 @@ const {
 const { TextDocument } = require("vscode-languageserver-textdocument");
 const {
   collectDiagnostics,
+  completionItemsAtPosition,
   formatText,
   hoverAtPosition,
   languageIdForUri
@@ -84,6 +85,9 @@ function validateDocument(document) {
 connection.onInitialize(() => ({
   capabilities: {
     textDocumentSync: TextDocumentSyncKind.Incremental,
+    completionProvider: {
+      triggerCharacters: ["=", "_"]
+    },
     hoverProvider: true,
     documentFormattingProvider: true
   }
@@ -124,6 +128,20 @@ connection.onHover((params) => {
     },
     range: hover.range
   };
+});
+
+connection.onCompletion((params) => {
+  const document = documents.get(params.textDocument.uri);
+
+  if (!document) {
+    return [];
+  }
+
+  return completionItemsAtPosition(
+    document.getText(),
+    documentLanguage(document),
+    params.position
+  );
 });
 
 connection.onDocumentFormatting((params) => {
