@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
+const fs = require("fs");
 const {
   createConnection,
   DiagnosticSeverity,
@@ -19,6 +20,38 @@ const {
 if (process.argv.includes("--version")) {
   process.stdout.write("moos-ivp-language-server 0.1.0\n");
   process.exit(0);
+}
+
+if (process.argv.includes("--check")) {
+  const filePaths = process.argv.slice(process.argv.indexOf("--check") + 1);
+  let total = 0;
+
+  if (!filePaths.length) {
+    process.stderr.write("Usage: moos-ivp-language-server --check <file...>\n");
+    process.exit(2);
+  }
+
+  for (const filePath of filePaths) {
+    const language = languageIdForUri(filePath);
+    if (!language) {
+      process.stderr.write(`${filePath}: unsupported file extension\n`);
+      total += 1;
+      continue;
+    }
+
+    const diagnostics = collectDiagnostics(fs.readFileSync(filePath, "utf8"), language, {
+      formattingEnabled: false
+    });
+    process.stdout.write(`${filePath}: ${diagnostics.length} diagnostics\n`);
+    diagnostics.forEach((diagnostic) => {
+      const line = diagnostic.range.start.line + 1;
+      const column = diagnostic.range.start.character + 1;
+      process.stdout.write(`  ${line}:${column} ${diagnostic.message}\n`);
+    });
+    total += diagnostics.length;
+  }
+
+  process.exit(total > 0 ? 1 : 0);
 }
 
 const connection = createConnection(ProposedFeatures.all);
@@ -118,4 +151,3 @@ connection.onDocumentFormatting((params) => {
 
 documents.listen(connection);
 connection.listen();
-

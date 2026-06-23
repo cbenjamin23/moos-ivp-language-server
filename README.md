@@ -30,9 +30,14 @@ Run the server manually:
 npm run start --workspace @moos-ivp/language-server -- --stdio
 ```
 
+Check files without an editor:
+
+```bash
+npx moos-ivp-language-server --check examples/all_apps.moos examples/all_behaviors.bhv
+```
+
 ## Emacs
 
 The Emacs package lives in `editors/emacs/moos-ivp-mode.el`. It registers MOOS-IvP file extensions and configures `eglot` to start `moos-ivp-language-server`.
 
 See [docs/lsp-emacs-plan.md](docs/lsp-emacs-plan.md) for the implementation plan.
-

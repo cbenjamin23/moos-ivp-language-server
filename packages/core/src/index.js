@@ -1,7 +1,30 @@
 "use strict";
 
+const path = require("path");
+const { createTextDocument, fullDocumentRange } = require("./document");
+const { collectConfigDiagnosticRecords } = require("./diagnostics");
+const { formatMoosIvpText, formatDocument, defaultFormattingOptions } = require("./formatter");
+const { validateGeometryValue } = require("./geometry");
+const { createHoverProvider } = require("./hover");
+const { loadLanguageRegistry } = require("./registry");
+
 const MOOS_EXTENSIONS = new Set([".moos", ".xmoos"]);
 const BEHAVIOR_EXTENSIONS = new Set([".bhv", ".xbhv"]);
+
+let registry;
+
+function coreContext() {
+  return {
+    extensionPath: path.join(__dirname, "..")
+  };
+}
+
+function languageRegistry() {
+  if (!registry) {
+    registry = loadLanguageRegistry(coreContext());
+  }
+  return registry;
+}
 
 function uriPath(uriOrPath) {
   if (!uriOrPath) {
@@ -19,8 +42,8 @@ function uriPath(uriOrPath) {
   return uriOrPath;
 }
 
-function extensionName(path) {
-  const match = uriPath(path).toLowerCase().match(/(\.[^.\/\\]+)$/);
+function extensionName(pathOrUri) {
+  const match = uriPath(pathOrUri).toLowerCase().match(/(\.[^.\/\\]+)$/);
   return match ? match[1] : "";
 }
 
@@ -38,141 +61,150 @@ function languageIdForUri(uriOrPath) {
   return null;
 }
 
-function lineOffsets(text) {
-  const offsets = [0];
-
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] === "\n") {
-      offsets.push(index + 1);
-    }
-  }
-
-  return offsets;
-}
-
-function wordAtPosition(text, position) {
-  const offsets = lineOffsets(text);
-  const lineOffset = offsets[position.line] ?? 0;
-  const nextOffset = offsets[position.line + 1] ?? text.length;
-  const lineText = text.slice(lineOffset, nextOffset).replace(/\r?\n$/, "");
-  const character = Math.min(position.character, lineText.length);
-
-  let start = character;
-  while (start > 0 && /[A-Za-z0-9_:-]/.test(lineText[start - 1])) {
-    start -= 1;
-  }
-
-  let end = character;
-  while (end < lineText.length && /[A-Za-z0-9_:-]/.test(lineText[end])) {
-    end += 1;
-  }
-
-  if (start === end) {
-    return null;
-  }
-
-  return {
-    text: lineText.slice(start, end),
-    range: {
-      start: { line: position.line, character: start },
-      end: { line: position.line, character: end }
-    }
-  };
-}
-
-function diagnostic(line, character, message, code) {
+function createValueDiagnostic(record) {
+  const end = Math.max(record.valueStart + record.valueText.length, record.valueStart + 1);
   return {
     severity: "warning",
-    code,
-    message,
+    source: "MOOS-IvP",
+    code: "schema-value",
+    message: record.message,
     range: {
-      start: { line, character },
-      end: { line, character: Math.max(character + 1, character) }
+      start: { line: record.lineNumber, character: record.valueStart },
+      end: { line: record.lineNumber, character: end }
     }
   };
 }
 
-function collectDiagnostics(text, language) {
+function createFormattingDiagnostic(document, issue) {
+  const line = Math.min(issue.lineNumber, Math.max(0, document.lineCount - 1));
+  const lineText = document.lineAt(line).text || "";
+  return {
+    severity: "warning",
+    source: "MOOS-IvP Format",
+    code: issue.code,
+    message: issue.message,
+    range: {
+      start: { line, character: 0 },
+      end: { line, character: Math.max(1, lineText.length) }
+    }
+  };
+}
+
+function normalizeDiagnosticOptions(options = {}) {
+  return {
+    schemaEnabled: options.schemaEnabled !== false,
+    geometryEnabled: options.geometryEnabled !== false,
+    formattingEnabled: options.formattingEnabled !== false,
+    formattingOptions: defaultFormattingOptions(options.formattingOptions || options)
+  };
+}
+
+function collectDiagnostics(text, language, options = {}) {
   const diagnostics = [];
-  const lines = text.split(/\r?\n/);
-  let balance = 0;
+  const diagnosticOptions = normalizeDiagnosticOptions(options);
+  const document = createTextDocument(text, language);
 
-  lines.forEach((line, lineNumber) => {
-    const commentIndex = line.indexOf("//");
-    const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line;
+  if (diagnosticOptions.schemaEnabled) {
+    diagnostics.push(...collectConfigDiagnosticRecords(
+      document,
+      languageRegistry().diagnosticSchema,
+      language,
+      { geometryEnabled: diagnosticOptions.geometryEnabled }
+    ).map(createValueDiagnostic));
+  }
 
-    for (const char of code) {
-      if (char === "{") {
-        balance += 1;
-      } else if (char === "}") {
-        balance -= 1;
-        if (balance < 0) {
-          diagnostics.push(diagnostic(lineNumber, line.indexOf("}"), "Closing brace has no matching opening brace.", "moos-ivp.unmatched-closing-brace"));
-          balance = 0;
-        }
-      }
-    }
-
-    if (language === "moos" && /^\s*ProcessConfig\s*=/.test(code) && !code.includes("{")) {
-      const nextLine = lines[lineNumber + 1] || "";
-      if (!/^\s*\{/.test(nextLine)) {
-        diagnostics.push(diagnostic(lineNumber, line.search(/\S/), "ProcessConfig blocks should be followed by an opening brace.", "moos-ivp.process-config-brace"));
-      }
-    }
-  });
-
-  if (balance > 0) {
-    const lastLine = Math.max(0, lines.length - 1);
-    diagnostics.push(diagnostic(lastLine, 0, "Opening brace has no matching closing brace.", "moos-ivp.unmatched-opening-brace"));
+  if (diagnosticOptions.formattingEnabled) {
+    diagnostics.push(...formatDocument(
+      document,
+      language,
+      diagnosticOptions.formattingOptions
+    ).issues.map((issue) => createFormattingDiagnostic(document, issue)));
   }
 
   return diagnostics;
 }
 
-function hoverAtPosition(text, language, position) {
-  const word = wordAtPosition(text, position);
-
-  if (!word) {
-    return null;
+class PlainMarkdownString {
+  constructor() {
+    this.value = "";
   }
 
-  const normalized = word.text.toLowerCase();
-  const entries = {
-    processconfig: "Defines configuration for a MOOS app process in a `.moos` mission file.",
-    behavior: "Defines an IvP Helm behavior block in a `.bhv` file.",
-    apptick: "MOOS app iterate frequency, in hertz.",
-    commstick: "MOOS app communications frequency, in hertz.",
-    condition: "Behavior condition that must be true for the behavior to run.",
-    updates: "MOOS variable used to receive behavior update messages."
-  };
+  appendMarkdown(value) {
+    this.value += value;
+  }
 
-  const value = entries[normalized];
-  if (!value) {
+  toString() {
+    return this.value;
+  }
+}
+
+class PlainHover {
+  constructor(contents, range) {
+    this.contents = contents;
+    this.range = range;
+  }
+}
+
+function fakeVscode() {
+  return {
+    MarkdownString: PlainMarkdownString,
+    Hover: PlainHover
+  };
+}
+
+function hoverProviderFor(language) {
+  const loaded = languageRegistry();
+  if (language === "ivp-behavior") {
+    return createHoverProvider(
+      fakeVscode(),
+      language,
+      loaded.bhvLookup,
+      loaded.bhvDocLookup,
+      loaded.bhvSourceLookup,
+      loaded.diagnosticSchema
+    );
+  }
+
+  return createHoverProvider(
+    fakeVscode(),
+    language,
+    loaded.moosLookup,
+    loaded.moosDocLookup,
+    loaded.moosSourceLookup,
+    loaded.diagnosticSchema
+  );
+}
+
+function hoverAtPosition(text, language, position) {
+  const document = createTextDocument(text, language);
+  const hover = hoverProviderFor(language).provideHover(document, position);
+
+  if (!hover) {
     return null;
   }
 
   return {
-    contents: value,
-    range: word.range
+    contents: String(hover.contents.value || hover.contents),
+    range: hover.range
   };
 }
 
-function formatText(text) {
-  const withoutTrailingWhitespace = text
-    .split(/\r?\n/)
-    .map((line) => line.replace(/[ \t]+$/, ""))
-    .join("\n");
+function formatText(text, language, options = {}) {
+  return formatMoosIvpText(text, language, options).text;
+}
 
-  return withoutTrailingWhitespace.endsWith("\n")
-    ? withoutTrailingWhitespace
-    : `${withoutTrailingWhitespace}\n`;
+function formatTextWithIssues(text, language, options = {}) {
+  return formatMoosIvpText(text, language, options);
 }
 
 module.exports = {
   collectDiagnostics,
+  createTextDocument,
   formatText,
+  formatTextWithIssues,
+  fullDocumentRange,
   hoverAtPosition,
   languageIdForUri,
-  wordAtPosition
+  languageRegistry,
+  validateGeometryValue
 };
-

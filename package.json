@@ -8,11 +8,11 @@
     "packages/server"
   ],
   "scripts": {
-    "check": "npm run check --workspaces",
+    "check": "npm run check --workspaces && node scripts/check-core-fixtures.js && node scripts/check-server-smoke.js",
+    "check:emacs": "node scripts/check-emacs-mode.js",
     "test": "npm run test --workspaces --if-present"
   },
   "engines": {
     "node": ">=20"
   }
 }
-
